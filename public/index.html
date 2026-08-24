@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FRETE GG — Simulador de Fretes</title>
+    <meta name="description" content="Simulador de fretes ponta a ponta e fracionado do Grupo Galvão." />
+    <meta name="theme-color" content="#0b1739" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Leaflet (CSS) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Fallback: garante altura mínima do mapa -->
+    <style>
+      #ponta_map,
+      #frac_map {
+        min-height: 260px;
+      }
+    </style>
+  </head>
+
+  <body class="theme-dark">
+    <div class="wrapper">
+      <!-- TOPBAR -->
+      <div class="topbar">
+        <div class="title-row">
+          <!-- ILUSTRAÇÃO (carrinho no asfalto) -->
+          <div class="hero-visual header-visual" aria-hidden="true">
+            <div class="hero-sun"></div>
+            <div class="hero-hills"></div>
+            <div class="road">
+              <div class="truck">
+                <div class="truck-cabin"></div>
+                <div class="truck-box"></div>
+                <div class="truck-wheel front"></div>
+                <div class="truck-wheel back"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="title-text">
+            <h1>FRETE GG</h1>
+            <div class="subtitle">
+              Grupo Galvão — Simulador de Frete Ponta a Ponta e Fracionado
+            </div>
+            <div class="subtitle">Custo médio Brasil — fontes de referência ANTT/SINDICARGA, 2026. Nenhum dado é armazenado.</div>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="btn-icon" id="themeToggle" type="button" title="Alternar tema">
+            <span class="icon-dark">🌙</span>
+            <span class="icon-light">☀️</span>
+            Tema
+          </button>
+        </div>
+      </div>
+
+      <!-- 2 CARDS -->
+      <div class="two-cards">
+        <!-- =======================
+           CARD 1: PONTA A PONTA
+           ======================= -->
+        <section class="card" id="card-ponta">
+          <div class="card-header">
+            <h2>Frete Ponta a Ponta</h2>
+            <span class="pill">Mapa exclusivo</span>
+          </div>
+          <p class="card-subtitle">Origem e Destino únicos. A distância é calculada automaticamente.</p>
+
+          <div class="form-grid">
+            <div>
+              <label for="ponta_tipoVeiculo">Tipo de veículo</label>
+              <select id="ponta_tipoVeiculo">
+                <option value="">Selecione…</option>
+                <option>Carro Leve</option>
+                <option>VUC</option>
+                <option>3/4</option>
+                <option>Toco</option>
+                <option>Truck</option>
+                <option>Outro</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="ponta_placa">Placa</label>
+              <input id="ponta_placa" type="text" placeholder="Ex.: RIO2A18" autocomplete="off" />
+            </div>
+
+            <div>
+              <label for="ponta_saida">Saída</label>
+              <input id="ponta_saida" type="datetime-local" />
+            </div>
+
+            <div>
+              <label for="ponta_chegada">Chegada</label>
+              <input id="ponta_chegada" type="datetime-local" />
+            </div>
+
+            <div>
+              <label for="ponta_origem">Origem</label>
+              <input id="ponta_origem" type="text" placeholder="Ex.: Praça Tiradentes, Centro, Rio de Janeiro" />
+            </div>
+
+            <div>
+              <label for="ponta_destino">Destino</label>
+              <input id="ponta_destino" type="text" placeholder="Ex.: Barra da Tijuca, Rio de Janeiro" />
+            </div>
+
+            <div>
+              <label for="ponta_distancia">Distância (km)</label>
+              <input id="ponta_distancia" type="text" placeholder="Calculada pela rota ou informada manualmente" />
+            </div>
+
+            <div>
+              <label for="ponta_valorKm">Valor por km (R$)</label>
+              <input id="ponta_valorKm" type="text" placeholder="Automático" readonly />
+            </div>
+
+            <div>
+              <label for="ponta_cargaDescarga">Carga/Descarga (R$)</label>
+              <input id="ponta_cargaDescarga" type="text" placeholder="Ex.: 120,00" inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="ponta_pedagios">Pedágios (R$)</label>
+              <input id="ponta_pedagios" type="text" placeholder="Ex.: 100,00" inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="ponta_outros">Outros adicionais (R$)</label>
+              <input id="ponta_outros" type="text" placeholder="Seguro, risco, etc." inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="ponta_margem">Margem de lucro (%)</label>
+              <input id="ponta_margem" type="text" placeholder="Ex.: 10" inputmode="decimal" />
+            </div>
+
+            <!-- Observações: agora SEM “grid dentro de grid” -->
+            <div style="grid-column: 1 / -1;">
+              <label for="ponta_obs">Observações / NF</label>
+              <input id="ponta_obs" type="text" placeholder="Ex.: NF 12345 • Cliente X" />
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-route" id="ponta_btnRota" type="button">Recalcular rota</button>
+            <button class="btn btn-secondary" id="ponta_btnLimpar" type="button">Nova simulação</button>
+            <button class="btn btn-success-main" id="ponta_btnAdicionarExtrato" type="button">Adicionar ao histórico</button>
+            <button class="btn btn-pdf" id="ponta_btnExportarPDF" type="button">Exportar PDF</button>
+            <button class="btn btn-danger" id="ponta_btnLimparExtrato" type="button">Limpar histórico</button>
+          </div>
+
+          <div class="map-wrap">
+            <div class="map" id="ponta_map" style="height:260px;"></div>
+            <div class="map-info">
+              <strong id="ponta_mapStatus">Status: aguardando origem e destino…</strong>
+            </div>
+          </div>
+
+          <div class="results-grid">
+            <div class="result-item">
+              <div class="result-label">Custo base</div>
+              <div class="result-value" id="ponta_resCustoBase">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Custos adicionais</div>
+              <div class="result-value" id="ponta_resCustosAdicionais">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Custo total</div>
+              <div class="result-value" id="ponta_resCustoTotal">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Lucro (margem)</div>
+              <div class="result-value" id="ponta_resLucro">R$ 0,00</div>
+            </div>
+            <div class="result-item result-highlight" style="grid-column: 1 / -1;">
+              <div class="result-label">Frete sugerido</div>
+              <div class="result-value" id="ponta_resFreteSugerido">R$ 0,00</div>
+            </div>
+          </div>
+
+          <div class="card-divider"></div>
+
+          <h3 style="margin:0; font-size:0.95rem;">Extrato (Ponta a Ponta)</h3>
+          <div class="table-wrapper">
+            <table id="ponta_tabelaExtrato">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Placa</th>
+                  <th>Saída</th>
+                  <th>Chegada</th>
+                  <th>Origem</th>
+                  <th>Destino</th>
+                  <th>Distância (km)</th>
+                  <th>Frete sugerido</th>
+                  <th>NF/Obs.</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="resumo-grid">
+            <div class="resumo-card">
+              <div class="resumo-title">Total de viagens</div>
+              <div class="resumo-value" id="ponta_resTotalViagens">0</div>
+              <div class="resumo-sub">Registros no extrato</div>
+            </div>
+            <div class="resumo-card">
+              <div class="resumo-title">Total de fretes</div>
+              <div class="resumo-value" id="ponta_resTotalFretes">R$ 0,00</div>
+              <div class="resumo-sub">Somatório do extrato</div>
+            </div>
+            <div class="resumo-card">
+              <div class="resumo-title">Média por frete</div>
+              <div class="resumo-value" id="ponta_resMediaFrete">R$ 0,00</div>
+              <div class="resumo-sub">Média do extrato</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- =======================
+           CARD 2: FRACIONADO
+           ======================= -->
+        <section class="card" id="card-frac">
+          <div class="card-header">
+            <h2>Frete Fracionado (Multi-destinos)</h2>
+            <span class="pill">Mapa exclusivo</span>
+          </div>
+          <p class="card-subtitle">
+            Origem + múltiplos destinos. A distância entre trechos calculada automaticamente.
+          </p>
+
+          <div class="form-grid">
+            <div>
+              <label for="frac_tipoVeiculo">Tipo de veículo</label>
+              <select id="frac_tipoVeiculo">
+                <option value="">Selecione…</option>
+                <option>Carro Leve</option>
+                <option>VUC</option>
+                <option>3/4</option>
+                <option>Toco</option>
+                <option>Truck</option>
+                <option>Outro</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="frac_placa">Placa</label>
+              <input id="frac_placa" type="text" placeholder="Ex.: RIO2A18" autocomplete="off" />
+            </div>
+
+            <div>
+              <label for="frac_saida">Saída</label>
+              <input id="frac_saida" type="datetime-local" />
+            </div>
+
+            <div>
+              <label for="frac_chegada">Chegada</label>
+              <input id="frac_chegada" type="datetime-local" />
+            </div>
+
+            <div>
+              <label for="frac_origem">Origem</label>
+              <input id="frac_origem" type="text" placeholder="Ex.: Praça Tiradentes, Centro, Rio de Janeiro" />
+            </div>
+
+            <div>
+              <label for="frac_distancia">Distância total (km)</label>
+              <input id="frac_distancia" type="text" placeholder="Calculada pelo mapa" readonly />
+            </div>
+
+            <div>
+              <label for="frac_valorKm">Valor por km (R$)</label>
+              <input id="frac_valorKm" type="text" placeholder="Automático" readonly />
+            </div>
+
+            <div>
+              <label for="frac_cargaDescarga">Carga/Descarga (R$)</label>
+              <input id="frac_cargaDescarga" type="text" placeholder="Ex.: 120,00" inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="frac_pedagios">Pedágios (R$)</label>
+              <input id="frac_pedagios" type="text" placeholder="Ex.: 100,00" inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="frac_outros">Outros adicionais (R$)</label>
+              <input id="frac_outros" type="text" placeholder="Seguro, risco, etc." inputmode="decimal" />
+            </div>
+
+            <div>
+              <label for="frac_margem">Margem de lucro (%)</label>
+              <input id="frac_margem" type="text" placeholder="Ex.: 10" inputmode="decimal" />
+            </div>
+
+            <!-- Observações: agora SEM “grid dentro de grid” -->
+            <div style="grid-column: 1 / -1;">
+              <label for="frac_obs">Observações / NF</label>
+              <input id="frac_obs" type="text" placeholder="Ex.: NF 12345 • Rota multi-entregas" />
+            </div>
+          </div>
+
+          <!-- Destinos dinâmicos -->
+          <div class="destinos-box">
+            <div class="destinos-header">
+              <strong>Destinos</strong>
+              <div class="btn-row" style="margin:0;">
+                <button class="btn btn-secondary" id="frac_btnAddDestino" type="button">+ Adicionar destino</button>
+                <button class="btn btn-danger" id="frac_btnLimparDestinos" type="button">Limpar destinos</button>
+              </div>
+            </div>
+
+            <div class="destinos-container" id="frac_destinosContainer"></div>
+
+            <div class="mini-hint">
+              Dica: adicione os destinos na ordem das entregas (o mapa calculará os trechos e a distância total).
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-route" id="frac_btnRota" type="button">Recalcular rota</button>
+            <button class="btn btn-secondary" id="frac_btnLimpar" type="button">Nova simulação</button>
+            <button class="btn btn-success-main" id="frac_btnAdicionarExtrato" type="button">Adicionar ao histórico</button>
+            <button class="btn btn-pdf" id="frac_btnExportarPDF" type="button">Exportar PDF</button>
+            <button class="btn btn-danger" id="frac_btnLimparExtrato" type="button">Limpar histórico</button>
+          </div>
+
+          <div class="map-wrap">
+            <div class="map" id="frac_map" style="height:260px;"></div>
+            <div class="map-info">
+              <strong id="frac_mapStatus">Status: aguardando origem e destinos…</strong>
+            </div>
+          </div>
+
+          <div class="results-grid">
+            <div class="result-item">
+              <div class="result-label">Custo base</div>
+              <div class="result-value" id="frac_resCustoBase">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Custos adicionais</div>
+              <div class="result-value" id="frac_resCustosAdicionais">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Custo total</div>
+              <div class="result-value" id="frac_resCustoTotal">R$ 0,00</div>
+            </div>
+            <div class="result-item">
+              <div class="result-label">Lucro (margem)</div>
+              <div class="result-value" id="frac_resLucro">R$ 0,00</div>
+            </div>
+            <div class="result-item result-highlight" style="grid-column: 1 / -1;">
+              <div class="result-label">Frete sugerido</div>
+              <div class="result-value" id="frac_resFreteSugerido">R$ 0,00</div>
+            </div>
+          </div>
+
+          <div class="card-divider"></div>
+
+          <h3 style="margin:0; font-size:0.95rem;">Trechos (Fracionado)</h3>
+          <div class="trechos-table-wrapper">
+            <table id="frac_tabelaTrechos">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Trecho</th>
+                  <th style="text-align:right;">Km</th>
+                  <th style="text-align:right;">Valor</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="card-divider"></div>
+
+          <h3 style="margin:0; font-size:0.95rem;">Extrato (Fracionado)</h3>
+          <div class="table-wrapper">
+            <table id="frac_tabelaExtrato">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Placa</th>
+                  <th>Saída</th>
+                  <th>Chegada</th>
+                  <th>Origem</th>
+                  <th>Destinos</th>
+                  <th>Distância (km)</th>
+                  <th>Frete sugerido</th>
+                  <th>NF/Obs.</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="resumo-grid">
+            <div class="resumo-card">
+              <div class="resumo-title">Total de viagens</div>
+              <div class="resumo-value" id="frac_resTotalViagens">0</div>
+              <div class="resumo-sub">Registros no extrato</div>
+            </div>
+            <div class="resumo-card">
+              <div class="resumo-title">Total de fretes</div>
+              <div class="resumo-value" id="frac_resTotalFretes">R$ 0,00</div>
+              <div class="resumo-sub">Somatório do extrato</div>
+            </div>
+            <div class="resumo-card">
+              <div class="resumo-title">Média por frete</div>
+              <div class="resumo-value" id="frac_resMediaFrete">R$ 0,00</div>
+              <div class="resumo-sub">Média do extrato</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer style="text-align:center;">
+        <strong>Copyright © Grupo Galvão</strong>
+      </footer>
+    </div>
+
+    <!-- SCRIPTS NO FINAL (ordem garantida) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+    <script src="script.js"></script>
+  </body>
+</html>
