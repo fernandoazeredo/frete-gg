@@ -10,6 +10,15 @@ Aplicativo estático do Grupo Galvão para consulta e simulação de valores de 
 - Os extratos ficam somente na memória da página e são apagados ao fechar ou recarregar o navegador.
 - Consulta de localidades e rotas por serviços públicos do OpenStreetMap/Nominatim e OSRM.
 
+## Melhorias da atualização
+
+- Avisos visuais para veículo não selecionado e endereço inválido.
+- Busca de endereços limitada ao Brasil.
+- Fila de geocodificação para respeitar o intervalo entre consultas do Nominatim.
+- Nova tentativa automática em falhas temporárias de rede.
+- Destaque e foco no campo que precisa ser corrigido.
+- Histórico mantido somente na memória da página, sem gravação no navegador.
+
 ## Publicação
 
 Projeto Firebase exclusivo: `frete-gg`.
