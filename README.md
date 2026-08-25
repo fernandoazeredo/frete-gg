@@ -7,7 +7,8 @@ Aplicativo estático do Grupo Galvão para consulta e simulação de valores de 
 - HTML, CSS e JavaScript puro.
 - Firebase Hosting apenas para publicação.
 - Sem autenticação, banco de dados ou Firebase Storage.
-- Os extratos ficam somente na memória da página e são apagados ao fechar ou recarregar o navegador.
+- Os extratos são preservados no navegador por `localStorage` e reaparecem após atualizar ou reabrir a página.
+- O histórico é local e não é compartilhado entre computadores ou navegadores.
 - Consulta de localidades e rotas por serviços públicos do OpenStreetMap/Nominatim e OSRM.
 
 ## Melhorias da atualização
@@ -17,7 +18,7 @@ Aplicativo estático do Grupo Galvão para consulta e simulação de valores de 
 - Fila de geocodificação para respeitar o intervalo entre consultas do Nominatim.
 - Nova tentativa automática em falhas temporárias de rede.
 - Destaque e foco no campo que precisa ser corrigido.
-- Histórico mantido somente na memória da página, sem gravação no navegador.
+- Histórico persistente no navegador, sem banco de dados no Firebase.
 
 ## Publicação
 
