@@ -1132,13 +1132,43 @@
   /* =========================
      EXTRATOS LOAD/SAVE
      ========================= */
+  // Persistência local: o histórico fica salvo neste navegador entre acessos.
+  var EXTRATOS_STORAGE_KEY = "frete_gg_extratos_v1";
+
   function loadExtratos() {
     ponta.extrato = [];
     frac.extrato = [];
+
+    try {
+      var raw = window.localStorage
+        ? window.localStorage.getItem(EXTRATOS_STORAGE_KEY)
+        : null;
+
+      if (raw) {
+        var data = JSON.parse(raw);
+        if (data && Array.isArray(data.ponta)) ponta.extrato = data.ponta;
+        if (data && Array.isArray(data.frac)) frac.extrato = data.frac;
+      }
+    } catch (e) {
+      // Dados corrompidos ou armazenamento indisponível: inicia vazio.
+      ponta.extrato = [];
+      frac.extrato = [];
+    }
   }
 
   function saveExtratos() {
-    // Os extratos existem somente em memória enquanto esta página está aberta.
+    try {
+      if (!window.localStorage) return;
+      window.localStorage.setItem(
+        EXTRATOS_STORAGE_KEY,
+        JSON.stringify({
+          ponta: ponta.extrato || [],
+          frac: frac.extrato || []
+        })
+      );
+    } catch (e) {
+      // Modo privado ou limite excedido: não interrompe o aplicativo.
+    }
   }
 
   /* =========================
