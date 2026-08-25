@@ -14,4 +14,4 @@ firebase projects:list | Out-Null
 Write-Host "Publicando o FRETE GG no Firebase Hosting..."
 firebase deploy --only hosting --project $FirebaseProjectId
 
-Write-Host "Deploy concluído com sucesso."
+Write-Host "Deploy concluido com sucesso."
