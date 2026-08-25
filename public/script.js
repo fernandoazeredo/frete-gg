@@ -8,8 +8,31 @@
      CONFIG
      ========================= */
   var NOMINATIM_URL =
-    "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=";
+    "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=";
   var OSRM_URL = "https://router.project-osrm.org/route/v1/driving/";
+
+  // Mantém as consultas de endereço em fila para respeitar o limite do Nominatim.
+  var GEOCODE_MIN_INTERVAL_MS = 1100;
+  var lastGeocodeCallAt = 0;
+  var geocodeQueue = Promise.resolve();
+
+  function waitGeocodeSlot() {
+    geocodeQueue = geocodeQueue.then(function () {
+      var now = Date.now();
+      var wait = Math.max(
+        0,
+        lastGeocodeCallAt + GEOCODE_MIN_INTERVAL_MS - now
+      );
+      lastGeocodeCallAt = Math.max(now, lastGeocodeCallAt) + wait;
+
+      if (!wait) return undefined;
+      return new Promise(function (resolve) {
+        setTimeout(resolve, wait);
+      });
+    });
+
+    return geocodeQueue;
+  }
 
   var TABELA_VALOR_KM = {
     "carro leve": 5.19,
@@ -84,6 +107,61 @@
   function setText(el, txt) {
     if (!el) return;
     el.textContent = String(txt == null ? "" : txt);
+  }
+
+  function showToast(msg, kind) {
+    if (!msg) return;
+    var box = $("__freteToastBox");
+
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "__freteToastBox";
+      box.setAttribute("role", "status");
+      box.setAttribute("aria-live", "polite");
+      box.style.position = "fixed";
+      box.style.top = "16px";
+      box.style.left = "50%";
+      box.style.transform = "translateX(-50%)";
+      box.style.zIndex = "99999";
+      box.style.display = "flex";
+      box.style.flexDirection = "column";
+      box.style.gap = "8px";
+      box.style.pointerEvents = "none";
+      document.body.appendChild(box);
+    }
+
+    var toast = document.createElement("div");
+    toast.textContent = msg;
+    toast.style.padding = "10px 16px";
+    toast.style.borderRadius = "8px";
+    toast.style.fontSize = "14px";
+    toast.style.fontWeight = "600";
+    toast.style.color = "#fff";
+    toast.style.background = kind === "error" ? "#c0392b" : "#1e8449";
+    toast.style.boxShadow = "0 4px 14px rgba(0,0,0,0.35)";
+    toast.style.maxWidth = "90vw";
+    toast.style.textAlign = "center";
+    box.appendChild(toast);
+
+    setTimeout(function () {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 5000);
+  }
+
+  function markFieldInvalid(el) {
+    if (!el) return;
+    el.style.outline = "2px solid #e74c3c";
+    el.style.outlineOffset = "2px";
+
+    setTimeout(function () {
+      el.style.outline = "";
+      el.style.outlineOffset = "";
+    }, 4000);
+
+    try {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
+    } catch (e) {}
   }
 
   // Atualiza por ID com segurança, mesmo se o objeto elPonta/elFrac estiver desatualizado
@@ -298,20 +376,35 @@
     });
   }
 
+  function geocodeOneAttempt(q) {
+    return waitGeocodeSlot().then(function () {
+      return fetchJSON(NOMINATIM_URL + encodeURIComponent(q)).then(function (
+        arr
+      ) {
+        if (!arr || !arr.length)
+          throw new Error("Endereço não encontrado: " + q);
+
+        var pt = {
+          lat: Number(arr[0].lat),
+          lon: Number(arr[0].lon),
+          display: arr[0].display_name || q
+        };
+
+        if (!isValidPoint(pt))
+          throw new Error("Coordenada inválida para: " + q);
+        return pt;
+      });
+    });
+  }
+
   function geocodeOne(query) {
     var q = String(query || "").trim();
     if (!q) return Promise.reject(new Error("Endereço vazio"));
-    return fetchJSON(NOMINATIM_URL + encodeURIComponent(q)).then(function (
-      arr
-    ) {
-      if (!arr || !arr.length) throw new Error("Endereço não encontrado: " + q);
-      var pt = {
-        lat: Number(arr[0].lat),
-        lon: Number(arr[0].lon),
-        display: arr[0].display_name || q
-      };
-      if (!isValidPoint(pt)) throw new Error("Coordenada inválida para: " + q);
-      return pt;
+
+    return geocodeOneAttempt(q).catch(function (err) {
+      var msg = err && err.message ? err.message : "";
+      if (/não encontrado|inválida/.test(msg)) throw err;
+      return geocodeOneAttempt(q);
     });
   }
 
@@ -952,12 +1045,51 @@
     setText(elPonta.resFrete, formatCurrency(centsToNumber(r.freteCent)));
   }
 
+  function validarTipoVeiculo(elGroup, label) {
+    var tipoVal = elGroup.tipo
+      ? String(elGroup.tipo.value || "").trim()
+      : "";
+
+    if (!tipoVal) {
+      showToast(
+        "Selecione o tipo de veículo antes de calcular (" + label + ").",
+        "error"
+      );
+      markFieldInvalid(elGroup.tipo);
+      return false;
+    }
+
+    if (isOutro(tipoVal)) {
+      var valorKm = elGroup.valorKm
+        ? parseBRLToNumber(elGroup.valorKm.value)
+        : 0;
+
+      if (!valorKm) {
+        showToast(
+          'Informe o "Valor por km" para o tipo "Outro" (' + label + ").",
+          "error"
+        );
+        markFieldInvalid(elGroup.valorKm);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   function pontaCalcularRota() {
     var origem = elPonta.origem ? elPonta.origem.value : "";
     var destino = elPonta.destino ? elPonta.destino.value : "";
 
     if (!String(origem || "").trim() || !String(destino || "").trim()) {
       setText(elPonta.mapStatus, "Status: informe origem e destino.");
+      if (!String(origem || "").trim()) markFieldInvalid(elPonta.origem);
+      else markFieldInvalid(elPonta.destino);
+      return;
+    }
+
+    if (!validarTipoVeiculo(elPonta, "Ponta a Ponta")) {
+      setText(elPonta.mapStatus, "Status: selecione o tipo de veículo.");
       return;
     }
 
@@ -987,10 +1119,13 @@
           });
       })
       .catch(function (err) {
-        setText(
-          elPonta.mapStatus,
-          "Status: erro — " + (err && err.message ? err.message : "falha")
-        );
+        var msg = err && err.message ? err.message : "falha";
+        setText(elPonta.mapStatus, "Status: erro — " + msg);
+        showToast("Ponta a Ponta: " + msg, "error");
+
+        if (msg.indexOf(origem) >= 0) markFieldInvalid(elPonta.origem);
+        else if (msg.indexOf(destino) >= 0)
+          markFieldInvalid(elPonta.destino);
       });
   }
 
@@ -1010,6 +1145,8 @@
      PONTA: EXTRATO (CARD) ✅ SEM WRAP
      ========================= */
   function pontaAddExtrato() {
+    if (!validarTipoVeiculo(elPonta, "Ponta a Ponta")) return;
+
     var km = parseBRLToNumber(elPonta.dist ? elPonta.dist.value : "");
     var vkm = getValorKmFromUI(elPonta.tipo, elPonta.valorKm);
     var baseCent = toCents(km * vkm);
@@ -1249,27 +1386,49 @@
   /* =========================
      FRAC: ROTAS + LEGS
      ========================= */
+  function geocodeSequencial(nomes) {
+    var out = [];
+    var chain = Promise.resolve();
+
+    for (var i = 0; i < nomes.length; i++) {
+      (function (idx) {
+        chain = chain.then(function () {
+          return geocodeOne(nomes[idx]).then(function (pt) {
+            out[idx] = pt;
+          });
+        });
+      })(i);
+    }
+
+    return chain.then(function () {
+      return out;
+    });
+  }
+
   function fracCalcularRota() {
     var origemTxt = elFrac.origem ? elFrac.origem.value : "";
     var destinos = fracGetDestinosValues();
 
     if (!String(origemTxt || "").trim()) {
       setText(elFrac.mapStatus, "Status: informe a origem.");
+      markFieldInvalid(elFrac.origem);
       return;
     }
     if (!destinos.length) {
       setText(elFrac.mapStatus, "Status: adicione ao menos 1 destino.");
+      showToast("Adicione ao menos 1 destino no Fracionado.", "error");
+      return;
+    }
+    if (!validarTipoVeiculo(elFrac, "Fracionado")) {
+      setText(elFrac.mapStatus, "Status: selecione o tipo de veículo.");
       return;
     }
 
     setText(elFrac.mapStatus, "Status: geocodificando na ordem informada...");
 
     var nomesPontos = [String(origemTxt).trim()].concat(destinos);
-    var pGeos = [];
-    for (var i = 0; i < nomesPontos.length; i++)
-      pGeos.push(geocodeOne(nomesPontos[i]));
 
-    Promise.all(pGeos)
+    geocodeSequencial(nomesPontos)
       .then(function (pts) {
         setText(
           elFrac.mapStatus,
@@ -1300,10 +1459,25 @@
         });
       })
       .catch(function (err) {
-        setText(
-          elFrac.mapStatus,
-          "Status: erro — " + (err && err.message ? err.message : "falha")
-        );
+        var msg = err && err.message ? err.message : "falha";
+        setText(elFrac.mapStatus, "Status: erro — " + msg);
+        showToast("Fracionado: " + msg, "error");
+
+        if (msg.indexOf(origemTxt) >= 0) {
+          markFieldInvalid(elFrac.origem);
+        } else {
+          var destInputs = frac.destinosInputs || [];
+          for (var di = 0; di < destInputs.length; di++) {
+            var valorDestino = destInputs[di]
+              ? String(destInputs[di].value || "").trim()
+              : "";
+
+            if (valorDestino && msg.indexOf(valorDestino) >= 0) {
+              markFieldInvalid(destInputs[di]);
+              break;
+            }
+          }
+        }
       });
   }
 
@@ -1361,6 +1535,8 @@
      FRAC: EXTRATO (CARD) ✅ SEM WRAP
      ========================= */
   function fracAddExtrato() {
+    if (!validarTipoVeiculo(elFrac, "Fracionado")) return;
+
     var destinos = fracGetDestinosValues();
     var destinosCell = joinDestinos(destinos);
 
